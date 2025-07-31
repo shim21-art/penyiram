@@ -4,13 +4,17 @@ import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
 import 'package:firebase_database/firebase_database.dart'; // Import Firebase Realtime Database
 import 'dart:async';
 
-import 'package:penyiraman_otomatis/firebase_options.dart'; // Import untuk StreamSubscription
+import 'package:penyiraman_otomatis/firebase_options.dart'; // Sesuaikan dengan path file Anda
 
 // Definisikan palet warna agar mudah diubah
 const Color primaryColor = Color(0xFF0A686A);
 const Color lightBlueBgColor = Color(0xFFE3F2FD);
 const Color sliderActiveColor = Color(0xFF29B6F6);
 const Color textColor = Color(0xFF333333);
+
+// --- KONSTANTA UNTUK KONVERSI SENSOR ---
+const int SENSOR_MIN = 1000; // Nilai saat sangat basah
+const int SENSOR_MAX = 4095; // Nilai saat sangat kering (udara)
 
 // MAIN FUNCTION - Modifikasi untuk inisialisasi Firebase
 void main() async {
@@ -47,45 +51,42 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Nilai awal untuk slider
-  double _moistureThreshold = 19.0;
-  double _pumpDuration = 3.0;
-  double _checkInterval = 1.0;
+  // Nilai awal untuk UI (akan segera ditimpa oleh data Firebase)
+  double _moistureThreshold = 20.0;
+  double _pumpDuration = 5.0;
+  double _checkInterval = 10.0;
 
   // --- STATE BARU UNTUK DATA FIREBASE ---
   int _kelembaban = 0; // Untuk menyimpan nilai kelembaban
   String _statusPenyiraman = "OFF"; // Untuk menyimpan status pompa
   String _timestamp = "00:00:00"; // Untuk menyimpan timestamp
-  late DatabaseReference _databaseReference; // Referensi ke node 'penyiram'
-  StreamSubscription<DatabaseEvent>?
-  _penyiramSubscription; // Listener untuk perubahan data
+
+  // Referensi ke Firebase
+  late DatabaseReference _statusRef;
+  late DatabaseReference _kontrolRef;
+  StreamSubscription<DatabaseEvent>? _statusSubscription;
+  StreamSubscription<DatabaseEvent>? _kontrolSubscription;
 
   @override
   void initState() {
     super.initState();
-    // Inisialisasi referensi ke node 'penyiram' di Firebase
-    _databaseReference = FirebaseDatabase.instance.ref('penyiram');
+    // Inisialisasi referensi ke node 'status' dan 'kontrol' di Firebase
+    _statusRef = FirebaseDatabase.instance.ref('penyiram/status');
+    _kontrolRef = FirebaseDatabase.instance.ref('penyiram/kontrol');
 
-    // Mulai mendengarkan perubahan data pada node tersebut
-    _listenToPenyiramData();
+    // Mulai mendengarkan perubahan data pada kedua node
+    _listenToStatusData();
+    _listenToKontrolData();
   }
 
-  // Fungsi untuk mendengarkan data dari Firebase secara real-time
-  void _listenToPenyiramData() {
-    _penyiramSubscription = _databaseReference.onValue.listen(
+  // Fungsi untuk mendengarkan data dari node 'status'
+  void _listenToStatusData() {
+    _statusSubscription = _statusRef.onValue.listen(
       (event) {
-        // Ambil data snapshot dari event
         final data = event.snapshot.value;
-
         if (data != null && data is Map) {
-          // Konversi data ke Map
-          final mapData = Map<String, dynamic>.from(data as Map);
-
-          // Update state dengan data baru dari Firebase
+          final mapData = Map<String, dynamic>.from(data);
           setState(() {
-            // Nilai 'kelembaban' dari Firebase (misal: 2539) perlu dikonversi
-            // ke persentase agar lebih mudah dibaca. Kita buat asumsi
-            // sensor bekerja dari 4095 (kering) ke sekitar 1000 (sangat basah).
             _kelembaban = _convertKelembabanToPercentage(
               mapData['kelembaban'] ?? 0,
             );
@@ -95,38 +96,120 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
       onError: (error) {
-        // Handle jika terjadi error (misal: masalah koneksi atau permission)
-        print("Error listening to Firebase: $error");
+        print("Error listening to status: $error");
       },
     );
   }
 
-  // Helper function untuk konversi nilai sensor kelembaban ke persentase
-  // Anda bisa menyesuaikan nilai MIN dan MAX sesuai dengan sensor yang dipakai
+  // Fungsi untuk mendengarkan data dari node 'kontrol'
+  void _listenToKontrolData() {
+    _kontrolSubscription = _kontrolRef.onValue.listen(
+      (event) {
+        final data = event.snapshot.value;
+        if (data != null && data is Map) {
+          final mapData = Map<String, dynamic>.from(data);
+          setState(() {
+            // Konversi nilai mentah 'threshold' dari Firebase ke persentase untuk slider
+            _moistureThreshold =
+                _convertKelembabanToPercentage(
+                  mapData['threshold'] ?? 0,
+                ).toDouble();
+            // Konversi milidetik ke detik untuk slider
+            _pumpDuration = (mapData['durasi_nyala_pompa'] ?? 0) / 1000.0;
+            _checkInterval = (mapData['interval_pengecekan'] ?? 0) / 1000.0;
+          });
+        }
+      },
+      onError: (error) {
+        print("Error listening to kontrol: $error");
+      },
+    );
+  }
+
+  // --- HELPER FUNCTIONS UNTUK KONVERSI ---
+
+  // Konversi nilai sensor mentah ke persentase (0-100%)
   int _convertKelembabanToPercentage(int rawValue) {
-    const int SENSOR_MIN = 1000; // Nilai saat sangat basah
-    const int SENSOR_MAX = 4095; // Nilai saat sangat kering (udara)
-
-    // Memastikan nilai tidak di luar rentang
     int clampedValue = rawValue.clamp(SENSOR_MIN, SENSOR_MAX);
-
-    // Rumus untuk membalik nilai (semakin tinggi rawValue, semakin rendah persentase)
-    // dan mengubahnya ke rentang 0-100
     double percentage =
         100 - ((clampedValue - SENSOR_MIN) / (SENSOR_MAX - SENSOR_MIN) * 100);
+    return percentage.round();
+  }
 
-    return percentage.toInt();
+  // Konversi persentase dari slider ke nilai sensor mentah
+  int _convertPercentageToRaw(double percentage) {
+    double clampedPercentage = percentage.clamp(0.0, 100.0);
+    double rawValue =
+        SENSOR_MAX - (clampedPercentage / 100 * (SENSOR_MAX - SENSOR_MIN));
+    return rawValue.round();
   }
 
   @override
   void dispose() {
-    // --- PENTING: Batalkan listener saat widget tidak lagi digunakan ---
-    _penyiramSubscription?.cancel();
+    // Batalkan semua listener saat widget tidak lagi digunakan
+    _statusSubscription?.cancel();
+    _kontrolSubscription?.cancel();
     super.dispose();
+  }
+
+  // --- FUNGSI UNTUK MENGIRIM DATA KE FIREBASE ---
+
+  void _updateThreshold(double value) {
+    int rawValue = _convertPercentageToRaw(value);
+    _kontrolRef
+        .update({'threshold': rawValue})
+        .then((_) {
+          print('Threshold updated to: $rawValue');
+        })
+        .catchError((error) {
+          print('Failed to update threshold: $error');
+        });
+  }
+
+  void _updatePumpDuration(double value) {
+    int milliseconds = (value * 1000).toInt();
+    _kontrolRef
+        .update({'durasi_nyala_pompa': milliseconds})
+        .then((_) {
+          print('Pump duration updated to: $milliseconds ms');
+        })
+        .catchError((error) {
+          print('Failed to update pump duration: $error');
+        });
+  }
+
+  void _updateCheckInterval(double value) {
+    int milliseconds = (value * 1000).toInt();
+    _kontrolRef
+        .update({'interval_pengecekan': milliseconds})
+        .then((_) {
+          print('Check interval updated to: $milliseconds ms');
+        })
+        .catchError((error) {
+          print('Failed to update check interval: $error');
+        });
+  }
+
+  void _kirimPerintahSiram() {
+    _kontrolRef
+        .update({'perintah': 'ON'})
+        .then((_) {
+          print('Perintah SIRAM ON terkirim!');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Perintah menyiram dikirim...')),
+          );
+        })
+        .catchError((error) {
+          print('Gagal mengirim perintah: $error');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal mengirim perintah: $error')),
+          );
+        });
   }
 
   @override
   Widget build(BuildContext context) {
+    // (Struktur build widget tetap sama, tidak perlu diubah)
     return Scaffold(
       body: Column(
         children: [
@@ -259,30 +342,31 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // NOTE: Untuk fungsionalitas penuh, perubahan slider ini
-        // seharusnya mengirim data KEMBALI ke Firebase.
         _buildSliderRow(
           label: 'Ambang Batas Kelembaban Tanah',
           value: _moistureThreshold,
           unit: '%',
           max: 100,
           onChanged: (val) => setState(() => _moistureThreshold = val),
+          onChangeEnd: (val) => _updateThreshold(val),
         ),
         const SizedBox(height: 20),
         _buildSliderRow(
           label: 'Waktu Nyala Pompa',
           value: _pumpDuration,
           unit: ' detik',
-          max: 10,
+          max: 20, // Sesuaikan max jika perlu
           onChanged: (val) => setState(() => _pumpDuration = val),
+          onChangeEnd: (val) => _updatePumpDuration(val),
         ),
         const SizedBox(height: 20),
         _buildSliderRow(
           label: 'Waktu Pengecekan Berkala',
           value: _checkInterval,
-          unit: ' hari',
-          max: 7,
+          unit: ' detik', // DIUBAH DARI 'hari' MENJADI 'detik'
+          max: 60, // Sesuaikan max jika perlu
           onChanged: (val) => setState(() => _checkInterval = val),
+          onChangeEnd: (val) => _updateCheckInterval(val),
         ),
       ],
     );
@@ -295,6 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String unit,
     required double max,
     required ValueChanged<double> onChanged,
+    required ValueChanged<double> onChangeEnd, // Tambahkan callback ini
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +414,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   min: 0,
                   max: max,
                   divisions: max.toInt(), // Membuat slider lebih presisi
-                  onChanged: onChanged,
+                  onChanged: onChanged, // Untuk update UI saat digeser
+                  onChangeEnd:
+                      onChangeEnd, // Untuk kirim data ke Firebase setelah selesai
                 ),
               ),
             ),
@@ -352,14 +439,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildWaterNowButton() {
     return Center(
       child: GestureDetector(
-        onTap: () {
-          // AKSI: Saat ditekan, idealnya ini mengirim perintah ke Firebase
-          // Contoh: _databaseReference.update({'perintah_siram': 'ON'});
-          print('Tombol Siram Sekarang ditekan!');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Perintah menyiram dikirim...')),
-          );
-        },
+        onTap: _kirimPerintahSiram, // Panggil fungsi pengirim perintah
         child: Container(
           width: 250,
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -394,9 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Data untuk Line Chart
-  // NOTE: Chart ini masih menggunakan data statis. Untuk membuatnya dinamis,
-  // Anda perlu menyimpan histori data kelembaban di Firebase (misalnya dalam bentuk List).
+  // (Bagian Chart tidak diubah, karena masih menggunakan data statis)
   LineChartData _mainChartData() {
     return LineChartData(
       gridData: FlGridData(
@@ -466,7 +544,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Widget untuk label sumbu X (Bawah) pada grafik
   Widget bottomTitleWidgets(double value, TitleMeta meta) {
     const style = TextStyle(
       fontWeight: FontWeight.bold,
@@ -494,11 +571,9 @@ class _HomeScreenState extends State<HomeScreen> {
         text = const Text('', style: style);
         break;
     }
-
     return SideTitleWidget(child: text, meta: meta);
   }
 
-  // Widget untuk label sumbu Y (Kiri) pada grafik
   Widget leftTitleWidgets(double value, TitleMeta meta) {
     const style = TextStyle(
       fontWeight: FontWeight.bold,
@@ -511,7 +586,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       return Container();
     }
-
     return Text(text, style: style, textAlign: TextAlign.left);
   }
 }
