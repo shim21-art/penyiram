@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "613500091552",
+    "firebase_url": "https://penyiram-tanaman-otomati-27e1a-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "penyiram-tanaman-otomati-27e1a",
+    "storage_bucket": "penyiram-tanaman-otomati-27e1a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:613500091552:android:c2cd4e67aa528586b8ddc5",
+        "android_client_info": {
+          "package_name": "com.example.penyiraman_otomatis"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWFP7yNKbbFpnHj_71G0NwzKX1Mf1j8PU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
