@@ -1,0 +1,10 @@
+{
+  "penyiram": {
+    "kelembaban": 2450,
+    "status_penyiraman": "OFF",
+    "timestamp": "14:25:10",
+    "threshold": 1500,
+    "mode": "otomatis",
+    "status_button": "ON"
+  }
+}
