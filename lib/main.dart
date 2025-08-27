@@ -147,45 +147,64 @@ class _PenyiramScreenState extends State<PenyiramScreen> {
         ],
       ),
       body: LayoutBuilder(
-        builder: (context, c) {
+        builder: (context, _) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ========= HERO STATS =========
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MetricCard(
-                        title: 'Kelembaban',
-                        subtitle: 'Terukur saat ini',
-                        value: '${_kelembaban}%',
-                        progress: _kelembaban / 100,
-                        accent: isDry ? cs.error : cs.primary,
-                        trailing: _TrendChip(trend: trend),
+                // ========= HERO STATS (responsive) =========
+                // ========= HERO STATS (responsive, tanpa Expanded di Column) =========
+                LayoutBuilder(
+                  builder: (context, cons) {
+                    final isNarrow = cons.maxWidth < 560; // breakpoint
+
+                    final leftCard = _MetricCard(
+                      title: 'Kelembaban',
+                      subtitle: 'Terukur saat ini',
+                      value: '${_kelembaban}%',
+                      progress: _kelembaban / 100,
+                      accent: isDry ? cs.error : cs.primary,
+                      trailing: _TrendChip(trend: trend),
+                    );
+
+                    final rightCard = _MetricCard(
+                      title: 'Threshold',
+                      subtitle: 'Batas penyiraman',
+                      value: '${_moistureThreshold.toInt()}%',
+                      progress: _moistureThreshold / 100,
+                      accent: cs.tertiary,
+                      trailing: _StatusChip(
+                        label: _mode == 'otomatis' ? 'Otomatis' : 'Manual',
+                        icon:
+                            _mode == 'otomatis'
+                                ? Icons.autorenew
+                                : Icons.touch_app,
+                        color: _mode == 'otomatis' ? cs.primary : cs.secondary,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MetricCard(
-                        title: 'Threshold',
-                        subtitle: 'Batas penyiraman',
-                        value: '${_moistureThreshold.toInt()}%',
-                        progress: _moistureThreshold / 100,
-                        accent: cs.tertiary,
-                        trailing: _StatusChip(
-                          label: _mode == 'otomatis' ? 'Otomatis' : 'Manual',
-                          icon:
-                              _mode == 'otomatis'
-                                  ? Icons.autorenew
-                                  : Icons.touch_app,
-                          color:
-                              _mode == 'otomatis' ? cs.primary : cs.secondary,
-                        ),
-                      ),
-                    ),
-                  ],
+                    );
+
+                    if (isNarrow) {
+                      // >>> Column TIDAK BOLEH berisi Expanded saat di dalam ScrollView
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          leftCard,
+                          const SizedBox(height: 12),
+                          rightCard,
+                        ],
+                      );
+                    } else {
+                      // >>> Row boleh pakai Expanded karena arahnya horizontal (lebar bounded)
+                      return Row(
+                        children: [
+                          Expanded(child: leftCard),
+                          const SizedBox(width: 12),
+                          Expanded(child: rightCard),
+                        ],
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
 
@@ -261,51 +280,74 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // progress ring
-            SizedBox(
-              width: 64,
-              height: 64,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    value: progress.clamp(0, 1),
-                    strokeWidth: 8,
-                    color: accent,
-                    backgroundColor: cs.surfaceVariant,
+    return LayoutBuilder(
+      builder: (context, cons) {
+        final isTight = cons.maxWidth < 320;
+        final ringSize = isTight ? 52.0 : 64.0;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // progress ring
+                SizedBox(
+                  width: ringSize,
+                  height: ringSize,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: progress.clamp(0, 1),
+                        strokeWidth: isTight ? 6 : 8,
+                        color: accent,
+                        backgroundColor: cs.surfaceVariant,
+                      ),
+                      Text(
+                        value,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
                   ),
-                  Text(
-                    value,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 12),
+                // teks utama: bisa mengambil sisa ruang
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // trailing: jangan paksa lebar, scale down jika sempit
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: trailing!,
+                    ),
                   ),
                 ],
-              ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            if (trailing != null) trailing!,
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -329,29 +371,80 @@ class _StatusBar extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            _StatusChip(
-              label: pumpOn ? 'Pompa: ON' : 'Pompa: OFF',
-              icon: pumpOn ? Icons.water : Icons.water_drop_outlined,
-              color: pumpOn ? cs.primary : cs.error,
-            ),
-            const SizedBox(width: 8),
-            _StatusChip(
-              label: mode == 'otomatis' ? 'Mode Otomatis' : 'Mode Manual',
-              icon: mode == 'otomatis' ? Icons.autorenew : Icons.touch_app,
-              color: mode == 'otomatis' ? cs.primary : cs.secondary,
-            ),
-            const Spacer(),
-            Icon(Icons.schedule, size: 18, color: cs.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Text(
-              'Update: $timestamp',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, cons) {
+            final isNarrow = cons.maxWidth < 480;
+            return isNarrow
+                ? Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _StatusChip(
+                      label: pumpOn ? 'Pompa: ON' : 'Pompa: OFF',
+                      icon: pumpOn ? Icons.water : Icons.water_drop_outlined,
+                      color: pumpOn ? cs.primary : cs.error,
+                    ),
+                    _StatusChip(
+                      label:
+                          mode == 'otomatis' ? 'Mode Otomatis' : 'Mode Manual',
+                      icon:
+                          mode == 'otomatis'
+                              ? Icons.autorenew
+                              : Icons.touch_app,
+                      color: mode == 'otomatis' ? cs.primary : cs.secondary,
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.schedule,
+                          size: 18,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Update: $timestamp',
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+                : Row(
+                  children: [
+                    _StatusChip(
+                      label: pumpOn ? 'Pompa: ON' : 'Pompa: OFF',
+                      icon: pumpOn ? Icons.water : Icons.water_drop_outlined,
+                      color: pumpOn ? cs.primary : cs.error,
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusChip(
+                      label:
+                          mode == 'otomatis' ? 'Mode Otomatis' : 'Mode Manual',
+                      icon:
+                          mode == 'otomatis'
+                              ? Icons.autorenew
+                              : Icons.touch_app,
+                      color: mode == 'otomatis' ? cs.primary : cs.secondary,
+                    ),
+                    const Spacer(),
+                    Icon(Icons.schedule, size: 18, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Update: $timestamp',
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+          },
         ),
       ),
     );
@@ -385,6 +478,7 @@ class _StatusChip extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
             ).textTheme.labelMedium?.copyWith(color: cs.onSurface),
@@ -425,13 +519,16 @@ class _ChartCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            // Header pakai Wrap agar tidak overflow
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
                   'Grafik Kelembaban Tanah',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -446,7 +543,6 @@ class _ChartCard extends StatelessWidget {
                     style: TextStyle(color: cs.onPrimaryContainer),
                   ),
                 ),
-                const Spacer(),
                 _LegendDot(color: cs.primary, label: 'Kelembaban'),
                 const SizedBox(width: 12),
                 _LegendDot(color: cs.error, label: 'Threshold'),
@@ -504,7 +600,7 @@ class _ChartCard extends StatelessWidget {
                         y: threshold,
                         color: cs.error,
                         strokeWidth: 1.5,
-                        dashArray: [6, 6],
+                        dashArray: const [6, 6],
                         label: HorizontalLineLabel(
                           show: true,
                           alignment: Alignment.topRight,
@@ -613,8 +709,11 @@ class _ControlsCard extends StatelessWidget {
             Text('Kontrol', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
 
-            // Mode segmented
-            Row(
+            // Mode segmented (Wrap agar tidak overflow)
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _Segmented(
                   value: mode,
@@ -624,15 +723,18 @@ class _ControlsCard extends StatelessWidget {
                     ('manual', Icons.touch_app, 'Manual'),
                   ],
                 ),
-                const Spacer(),
-                if (mode == 'manual') ...[
-                  const SizedBox(width: 8),
-                  Text('Pompa'),
-                  Switch(
-                    value: statusButton == 'ON',
-                    onChanged: (v) => onManualSwitch(v),
+                if (mode == 'manual')
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(width: 8),
+                      const Text('Pompa'),
+                      Switch(
+                        value: statusButton == 'ON',
+                        onChanged: onManualSwitch,
+                      ),
+                    ],
                   ),
-                ],
               ],
             ),
 
@@ -702,7 +804,8 @@ class _Segmented extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Wrap(
-      spacing: 8,
+      spacing: 6,
+      runSpacing: 6,
       children:
           items.map((it) {
             final (val, icon, label) = it;
@@ -711,8 +814,9 @@ class _Segmented extends StatelessWidget {
               borderRadius: BorderRadius.circular(100),
               onTap: () => onChanged(val),
               child: Container(
+                constraints: const BoxConstraints(minHeight: 36),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: 10,
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
@@ -730,11 +834,15 @@ class _Segmented extends StatelessWidget {
                       size: 16,
                       color: selected ? cs.primary : cs.onSurfaceVariant,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: selected ? cs.primary : cs.onSurface,
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(
+                        label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? cs.primary : cs.onSurface,
+                        ),
                       ),
                     ),
                   ],
