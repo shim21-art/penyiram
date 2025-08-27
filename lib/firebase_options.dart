@@ -67,4 +67,5 @@ class DefaultFirebaseOptions {
     databaseURL: 'https://penyiram-tanaman-otomati-27e1a-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'penyiram-tanaman-otomati-27e1a.firebasestorage.app',
   );
+
 }

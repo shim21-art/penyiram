@@ -1,603 +1,13 @@
-// import 'package:flutter/material.dart';
-// import 'package:fl_chart/fl_chart.dart';
-// import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
-// import 'package:firebase_database/firebase_database.dart'; // Import Firebase Realtime Database
-// import 'dart:async';
-
-// import 'package:penyiraman_otomatis/firebase_options.dart'; // Sesuaikan dengan path file Anda
-
-// // Definisikan palet warna agar mudah diubah
-// const Color primaryColor = Color(0xFF0A686A);
-// const Color lightBlueBgColor = Color(0xFFE3F2FD);
-// const Color sliderActiveColor = Color(0xFF29B6F6);
-// const Color textColor = Color(0xFF333333);
-
-// // --- KONSTANTA UNTUK KONVERSI SENSOR ---
-// const int SENSOR_MIN = 1000; // Nilai saat sangat basah
-// const int SENSOR_MAX = 4095; // Nilai saat sangat kering (udara)
-
-// // MAIN FUNCTION - Modifikasi untuk inisialisasi Firebase
-// void main() async {
-//   // Pastikan Flutter binding sudah siap sebelum inisialisasi Firebase
-//   WidgetsFlutterBinding.ensureInitialized();
-//   // Inisialisasi Firebase
-//   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-//   runApp(const MyApp());
-// }
-
-// class MyApp extends StatelessWidget {
-//   const MyApp({super.key});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       title: 'Smart Garden UI',
-//       theme: ThemeData(
-//         primaryColor: primaryColor,
-//         scaffoldBackgroundColor: Colors.grey[100],
-//         fontFamily: 'Poppins',
-//       ),
-//       home: const HomeScreen(),
-//       debugShowCheckedModeBanner: false,
-//     );
-//   }
-// }
-
-// class HomeScreen extends StatefulWidget {
-//   const HomeScreen({super.key});
-
-//   @override
-//   State<HomeScreen> createState() => _HomeScreenState();
-// }
-
-// class _HomeScreenState extends State<HomeScreen> {
-//   // Nilai awal untuk UI (akan segera ditimpa oleh data Firebase)
-//   double _moistureThreshold = 20.0;
-//   double _pumpDuration = 5.0;
-//   double _checkInterval = 10.0;
-
-//   // --- STATE BARU UNTUK DATA FIREBASE ---
-//   int _kelembaban = 0; // Untuk menyimpan nilai kelembaban
-//   String _statusPenyiraman = "OFF"; // Untuk menyimpan status pompa
-//   String _timestamp = "00:00:00"; // Untuk menyimpan timestamp
-
-//   // Referensi ke Firebase
-//   late DatabaseReference _statusRef;
-//   late DatabaseReference _kontrolRef;
-//   StreamSubscription<DatabaseEvent>? _statusSubscription;
-//   StreamSubscription<DatabaseEvent>? _kontrolSubscription;
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     // Inisialisasi referensi ke node 'status' dan 'kontrol' di Firebase
-//     _statusRef = FirebaseDatabase.instance.ref('penyiram/status_penyiraman');
-//     _kontrolRef = FirebaseDatabase.instance.ref('penyiram/kontrol');
-
-//     // Mulai mendengarkan perubahan data pada kedua node
-//     _listenToStatusData();
-//     _listenToKontrolData();
-//   }
-
-//   // Fungsi untuk mendengarkan data dari node 'status'
-//   void _listenToStatusData() {
-//     _statusSubscription = _statusRef.onValue.listen(
-//       (event) {
-//         final data = event.snapshot.value;
-//         if (data != null && data is Map) {
-//           final mapData = Map<String, dynamic>.from(data);
-//           setState(() {
-//             _kelembaban = _convertKelembabanToPercentage(
-//               mapData['kelembaban'] ?? 0,
-//             );
-//             _statusPenyiraman = mapData['status_penyiraman'] ?? 'OFF';
-//             _timestamp = mapData['timestamp'] ?? 'N/A';
-//           });
-//         }
-//       },
-//       onError: (error) {
-//         print("Error listening to status: $error");
-//       },
-//     );
-//   }
-
-//   // Fungsi untuk mendengarkan data dari node 'kontrol'
-//   void _listenToKontrolData() {
-//     _kontrolSubscription = _kontrolRef.onValue.listen(
-//       (event) {
-//         final data = event.snapshot.value;
-//         if (data != null && data is Map) {
-//           final mapData = Map<String, dynamic>.from(data);
-//           setState(() {
-//             // Konversi nilai mentah 'threshold' dari Firebase ke persentase untuk slider
-//             _moistureThreshold =
-//                 _convertKelembabanToPercentage(
-//                   mapData['threshold'] ?? 0,
-//                 ).toDouble();
-//             // Konversi milidetik ke detik untuk slider
-//             _pumpDuration = (mapData['durasi_nyala_pompa'] ?? 0) / 1000.0;
-//             _checkInterval = (mapData['interval_pengecekan'] ?? 0) / 1000.0;
-//           });
-//         }
-//       },
-//       onError: (error) {
-//         print("Error listening to kontrol: $error");
-//       },
-//     );
-//   }
-
-//   // --- HELPER FUNCTIONS UNTUK KONVERSI ---
-
-//   // Konversi nilai sensor mentah ke persentase (0-100%)
-//   int _convertKelembabanToPercentage(int rawValue) {
-//     int clampedValue = rawValue.clamp(SENSOR_MIN, SENSOR_MAX);
-//     double percentage =
-//         100 - ((clampedValue - SENSOR_MIN) / (SENSOR_MAX - SENSOR_MIN) * 100);
-//     return percentage.round();
-//   }
-
-//   // Konversi persentase dari slider ke nilai sensor mentah
-//   int _convertPercentageToRaw(double percentage) {
-//     double clampedPercentage = percentage.clamp(0.0, 100.0);
-//     double rawValue =
-//         SENSOR_MAX - (clampedPercentage / 100 * (SENSOR_MAX - SENSOR_MIN));
-//     return rawValue.round();
-//   }
-
-//   @override
-//   void dispose() {
-//     // Batalkan semua listener saat widget tidak lagi digunakan
-//     _statusSubscription?.cancel();
-//     _kontrolSubscription?.cancel();
-//     super.dispose();
-//   }
-
-//   // --- FUNGSI UNTUK MENGIRIM DATA KE FIREBASE ---
-
-//   void _updateThreshold(double value) {
-//     int rawValue = _convertPercentageToRaw(value);
-//     _kontrolRef
-//         .update({'threshold': rawValue})
-//         .then((_) {
-//           print('Threshold updated to: $rawValue');
-//         })
-//         .catchError((error) {
-//           print('Failed to update threshold: $error');
-//         });
-//   }
-
-//   void _updatePumpDuration(double value) {
-//     int milliseconds = (value * 1000).toInt();
-//     _kontrolRef
-//         .update({'durasi_nyala_pompa': milliseconds})
-//         .then((_) {
-//           print('Pump duration updated to: $milliseconds ms');
-//         })
-//         .catchError((error) {
-//           print('Failed to update pump duration: $error');
-//         });
-//   }
-
-//   void _updateCheckInterval(double value) {
-//     int milliseconds = (value * 1000).toInt();
-//     _kontrolRef
-//         .update({'interval_pengecekan': milliseconds})
-//         .then((_) {
-//           print('Check interval updated to: $milliseconds ms');
-//         })
-//         .catchError((error) {
-//           print('Failed to update check interval: $error');
-//         });
-//   }
-
-//   void _kirimPerintahSiram() {
-//     _kontrolRef
-//         .update({'perintah': 'ON'})
-//         .then((_) {
-//           print('Perintah SIRAM ON terkirim!');
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             const SnackBar(content: Text('Perintah menyiram dikirim...')),
-//           );
-//         })
-//         .catchError((error) {
-//           print('Gagal mengirim perintah: $error');
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             SnackBar(content: Text('Gagal mengirim perintah: $error')),
-//           );
-//         });
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     // (Struktur build widget tetap sama, tidak perlu diubah)
-//     return Scaffold(
-//       body: Column(
-//         children: [
-//           Container(height: 50, color: primaryColor),
-//           Expanded(
-//             child: SingleChildScrollView(
-//               child: Padding(
-//                 padding: const EdgeInsets.all(16.0),
-//                 child: Column(
-//                   crossAxisAlignment: CrossAxisAlignment.stretch,
-//                   children: [
-//                     _buildMoistureChartCard(),
-//                     const SizedBox(height: 24),
-//                     _buildStatusIndicators(), // Widget ini akan di-update
-//                     const SizedBox(height: 32),
-//                     _buildControlSliders(),
-//                     const SizedBox(height: 32),
-//                     _buildWaterNowButton(),
-//                   ],
-//                 ),
-//               ),
-//             ),
-//           ),
-//           Container(height: 30, color: primaryColor),
-//         ],
-//       ),
-//     );
-//   }
-
-//   Widget _buildMoistureChartCard() {
-//     return Container(
-//       padding: const EdgeInsets.all(16.0),
-//       decoration: BoxDecoration(
-//         color: lightBlueBgColor,
-//         borderRadius: BorderRadius.circular(12),
-//         boxShadow: [
-//           BoxShadow(
-//             color: Colors.black.withOpacity(0.1),
-//             spreadRadius: 1,
-//             blurRadius: 5,
-//             offset: const Offset(0, 3),
-//           ),
-//         ],
-//       ),
-//       child: Column(
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         children: [
-//           Row(
-//             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-//             children: [
-//               const Text(
-//                 'Kelembaban Tanah',
-//                 style: TextStyle(
-//                   fontSize: 18,
-//                   fontWeight: FontWeight.bold,
-//                   color: textColor,
-//                 ),
-//               ),
-//               // Menampilkan timestamp terakhir
-//               Text(
-//                 'Update: $_timestamp',
-//                 style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-//               ),
-//             ],
-//           ),
-//           const SizedBox(height: 20),
-//           SizedBox(height: 180, child: LineChart(_mainChartData())),
-//         ],
-//       ),
-//     );
-//   }
-
-//   // Widget untuk indikator status baterai, air, dan pompa
-//   Widget _buildStatusIndicators() {
-//     return Row(
-//       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-//       children: [
-//         // Indikator Baterai (masih data statis)
-//         _buildStatusItem(
-//           Icons.battery_charging_full,
-//           'Baterai',
-//           '75%',
-//           Colors.orange,
-//         ),
-//         // --- INDIKATOR DINAMIS DARI FIREBASE ---
-//         _buildStatusItem(
-//           Icons.water_drop,
-//           'Kelembaban',
-//           '$_kelembaban%', // Menampilkan nilai kelembaban dari Firebase
-//           Colors.blue,
-//         ),
-//         // --- INDIKATOR DINAMIS DARI FIREBASE ---
-//         _buildStatusItem(
-//           _statusPenyiraman == "ON" ? Icons.power : Icons.power_off,
-//           'Status Pompa',
-//           _statusPenyiraman, // Menampilkan status ON/OFF
-//           _statusPenyiraman == "ON" ? Colors.green : Colors.red,
-//         ),
-//       ],
-//     );
-//   }
-
-//   // Helper untuk membuat satu item status
-//   Widget _buildStatusItem(
-//     IconData icon,
-//     String label,
-//     String value,
-//     Color iconColor,
-//   ) {
-//     return Column(
-//       children: [
-//         Icon(icon, size: 45, color: iconColor),
-//         const SizedBox(height: 8),
-//         Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[700])),
-//         const SizedBox(height: 4),
-//         Text(
-//           value,
-//           style: const TextStyle(
-//             fontSize: 28,
-//             fontWeight: FontWeight.bold,
-//             color: textColor,
-//           ),
-//         ),
-//       ],
-//     );
-//   }
-
-//   // Widget untuk grup slider kontrol
-//   Widget _buildControlSliders() {
-//     return Column(
-//       crossAxisAlignment: CrossAxisAlignment.start,
-//       children: [
-//         _buildSliderRow(
-//           label: 'Ambang Batas Kelembaban Tanah',
-//           value: _moistureThreshold,
-//           unit: '%',
-//           max: 100,
-//           onChanged: (val) => setState(() => _moistureThreshold = val),
-//           onChangeEnd: (val) => _updateThreshold(val),
-//         ),
-//         const SizedBox(height: 20),
-//         _buildSliderRow(
-//           label: 'Waktu Nyala Pompa',
-//           value: _pumpDuration,
-//           unit: ' detik',
-//           max: 20, // Sesuaikan max jika perlu
-//           onChanged: (val) => setState(() => _pumpDuration = val),
-//           onChangeEnd: (val) => _updatePumpDuration(val),
-//         ),
-//         const SizedBox(height: 20),
-//         _buildSliderRow(
-//           label: 'Waktu Pengecekan Berkala',
-//           value: _checkInterval,
-//           unit: ' detik', // DIUBAH DARI 'hari' MENJADI 'detik'
-//           max: 60, // Sesuaikan max jika perlu
-//           onChanged: (val) => setState(() => _checkInterval = val),
-//           onChangeEnd: (val) => _updateCheckInterval(val),
-//         ),
-//       ],
-//     );
-//   }
-
-//   // Helper untuk membuat satu baris slider
-//   Widget _buildSliderRow({
-//     required String label,
-//     required double value,
-//     required String unit,
-//     required double max,
-//     required ValueChanged<double> onChanged,
-//     required ValueChanged<double> onChangeEnd, // Tambahkan callback ini
-//   }) {
-//     return Column(
-//       crossAxisAlignment: CrossAxisAlignment.start,
-//       children: [
-//         Text(
-//           label,
-//           style: const TextStyle(
-//             fontSize: 16,
-//             fontWeight: FontWeight.w500,
-//             color: textColor,
-//           ),
-//         ),
-//         Row(
-//           children: [
-//             Expanded(
-//               child: SliderTheme(
-//                 data: SliderTheme.of(context).copyWith(
-//                   activeTrackColor: sliderActiveColor,
-//                   inactiveTrackColor: sliderActiveColor.withOpacity(0.3),
-//                   thumbColor: sliderActiveColor,
-//                   overlayColor: sliderActiveColor.withOpacity(0.2),
-//                   trackHeight: 6.0,
-//                   thumbShape: const RoundSliderThumbShape(
-//                     enabledThumbRadius: 12.0,
-//                   ),
-//                   overlayShape: const RoundSliderOverlayShape(
-//                     overlayRadius: 20.0,
-//                   ),
-//                 ),
-//                 child: Slider(
-//                   value: value,
-//                   min: 0,
-//                   max: max,
-//                   divisions: max.toInt(), // Membuat slider lebih presisi
-//                   onChanged: onChanged, // Untuk update UI saat digeser
-//                   onChangeEnd:
-//                       onChangeEnd, // Untuk kirim data ke Firebase setelah selesai
-//                 ),
-//               ),
-//             ),
-//             const SizedBox(width: 16),
-//             Text(
-//               '${value.toInt()}$unit',
-//               style: const TextStyle(
-//                 fontSize: 18,
-//                 fontWeight: FontWeight.bold,
-//                 color: textColor,
-//               ),
-//             ),
-//           ],
-//         ),
-//       ],
-//     );
-//   }
-
-//   // Tombol "Siram Sekarang"
-//   Widget _buildWaterNowButton() {
-//     return Center(
-//       child: GestureDetector(
-//         onTap: _kirimPerintahSiram, // Panggil fungsi pengirim perintah
-//         child: Container(
-//           width: 250,
-//           padding: const EdgeInsets.symmetric(vertical: 16),
-//           decoration: BoxDecoration(
-//             borderRadius: BorderRadius.circular(30),
-//             gradient: LinearGradient(
-//               colors: [Colors.lightBlue.shade300, Colors.lightBlue.shade500],
-//               begin: Alignment.topLeft,
-//               end: Alignment.bottomRight,
-//             ),
-//             boxShadow: [
-//               BoxShadow(
-//                 color: Colors.blue.withOpacity(0.3),
-//                 spreadRadius: 2,
-//                 blurRadius: 8,
-//                 offset: const Offset(0, 4),
-//               ),
-//             ],
-//           ),
-//           child: const Center(
-//             child: Text(
-//               'Siram Sekarang',
-//               style: TextStyle(
-//                 fontSize: 18,
-//                 color: Colors.white,
-//                 fontWeight: FontWeight.bold,
-//               ),
-//             ),
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-
-//   // (Bagian Chart tidak diubah, karena masih menggunakan data statis)
-//   LineChartData _mainChartData() {
-//     return LineChartData(
-//       gridData: FlGridData(
-//         show: true,
-//         drawVerticalLine: false,
-//         getDrawingHorizontalLine: (value) {
-//           return const FlLine(color: Colors.white, strokeWidth: 1);
-//         },
-//       ),
-//       titlesData: FlTitlesData(
-//         show: true,
-//         rightTitles: const AxisTitles(
-//           sideTitles: SideTitles(showTitles: false),
-//         ),
-//         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-//         bottomTitles: AxisTitles(
-//           sideTitles: SideTitles(
-//             showTitles: true,
-//             reservedSize: 30,
-//             interval: 1,
-//             getTitlesWidget: bottomTitleWidgets,
-//           ),
-//         ),
-//         leftTitles: AxisTitles(
-//           sideTitles: SideTitles(
-//             showTitles: true,
-//             interval: 10,
-//             getTitlesWidget: leftTitleWidgets,
-//             reservedSize: 42,
-//           ),
-//         ),
-//       ),
-//       borderData: FlBorderData(show: false),
-//       minX: 0,
-//       maxX: 4,
-//       minY: 0,
-//       maxY: 40,
-//       lineBarsData: [
-//         LineChartBarData(
-//           spots: const [
-//             FlSpot(0, 18),
-//             FlSpot(1, 27),
-//             FlSpot(2, 23),
-//             FlSpot(3, 33),
-//             FlSpot(4, 34),
-//           ],
-//           isCurved: true,
-//           gradient: const LinearGradient(
-//             colors: [Colors.greenAccent, Colors.green],
-//           ),
-//           barWidth: 5,
-//           isStrokeCapRound: true,
-//           dotData: const FlDotData(show: false),
-//           belowBarData: BarAreaData(
-//             show: true,
-//             gradient: LinearGradient(
-//               colors: [
-//                 Colors.greenAccent.withOpacity(0.3),
-//                 Colors.green.withOpacity(0.0),
-//               ],
-//               begin: Alignment.topCenter,
-//               end: Alignment.bottomCenter,
-//             ),
-//           ),
-//         ),
-//       ],
-//     );
-//   }
-
-//   Widget bottomTitleWidgets(double value, TitleMeta meta) {
-//     const style = TextStyle(
-//       fontWeight: FontWeight.bold,
-//       fontSize: 12,
-//       color: Colors.black54,
-//     );
-//     Widget text;
-//     switch (value.toInt()) {
-//       case 0:
-//         text = const Text('06.00', style: style);
-//         break;
-//       case 1:
-//         text = const Text('09.00', style: style);
-//         break;
-//       case 2:
-//         text = const Text('12.00', style: style);
-//         break;
-//       case 3:
-//         text = const Text('15.00', style: style);
-//         break;
-//       case 4:
-//         text = const Text('18.00', style: style);
-//         break;
-//       default:
-//         text = const Text('', style: style);
-//         break;
-//     }
-//     return SideTitleWidget(child: text, meta: meta);
-//   }
-
-//   Widget leftTitleWidgets(double value, TitleMeta meta) {
-//     const style = TextStyle(
-//       fontWeight: FontWeight.bold,
-//       fontSize: 12,
-//       color: Colors.black54,
-//     );
-//     String text;
-//     if (value.toInt() % 10 == 0 && value.toInt() <= 40) {
-//       text = '${value.toInt()}%';
-//     } else {
-//       return Container();
-//     }
-//     return Text(text, style: style, textAlign: TextAlign.left);
-//   }
-// }
-
-
+import 'dart:collection';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:penyiraman_otomatis/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const PenyiramApp());
 }
 
@@ -606,10 +16,22 @@ class PenyiramApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+      useMaterial3: true,
+    );
     return MaterialApp(
-      title: 'Penyiram Tanaman',
-      theme: ThemeData(primarySwatch: Colors.green),
+      title: 'Smart Garden UI',
+      theme: baseTheme.copyWith(
+        textTheme: baseTheme.textTheme.apply(fontFamily: 'Roboto'),
+        cardTheme: const CardThemeData(
+          elevation: 1.5,
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+        ),
+      ),
       home: const PenyiramScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -625,17 +47,25 @@ class _PenyiramScreenState extends State<PenyiramScreen> {
   late DatabaseReference _penyiramRef;
   Stream<DatabaseEvent>? _penyiramStream;
 
-  int _kelembaban = 0;
-  String _statusPenyiraman = "OFF";
-  String _timestamp = "N/A";
-  double _moistureThreshold = 50;
-  String _mode = "otomatis";
-  String _statusButton = "OFF";
+  // State data
+  int _kelembaban = 0; // %
+  String _statusPenyiraman = 'OFF';
+  String _timestamp = 'N/A';
+  double _moistureThreshold = 50; // %
+  String _mode = 'otomatis';
+  String _statusButton = 'OFF';
+
+  // History (terbatas agar ringan)
+  final Queue<FlSpot> _history = ListQueue();
+  static const int _maxHistory = 60; // ~1 menit jika update /s
+
+  // Trend
+  double? _prevValue;
 
   @override
   void initState() {
     super.initState();
-    _penyiramRef = FirebaseDatabase.instance.ref("penyiram");
+    _penyiramRef = FirebaseDatabase.instance.ref('penyiram');
     _penyiramStream = _penyiramRef.onValue;
     _listenToData();
   }
@@ -643,134 +73,675 @@ class _PenyiramScreenState extends State<PenyiramScreen> {
   void _listenToData() {
     _penyiramStream?.listen((event) {
       final data = event.snapshot.value;
-      if (data != null && data is Map) {
-        final mapData = Map<String, dynamic>.from(data);
-        setState(() {
-          _kelembaban = _convertKelembabanToPercentage(mapData["kelembaban"] ?? 0);
-          _statusPenyiraman = mapData["status_penyiraman"] ?? "OFF";
-          _timestamp = mapData["timestamp"] ?? "N/A";
-          _moistureThreshold =
-              _convertKelembabanToPercentage(mapData["threshold"] ?? 0).toDouble();
-          _mode = mapData["mode"] ?? "otomatis";
-          _statusButton = mapData["status_button"] ?? "OFF";
-        });
-      }
+      if (data == null || data is! Map) return;
+      final mapData = Map<String, dynamic>.from(data as Map);
+
+      final kelembabanRaw = mapData['kelembaban'] ?? 0;
+      final thresholdRaw = mapData['threshold'] ?? 0;
+
+      final kelembaban = _convertKelembabanToPercentage(kelembabanRaw);
+      final thresholdPct =
+          _convertKelembabanToPercentage(thresholdRaw).toDouble();
+
+      setState(() {
+        _prevValue = _kelembaban.toDouble();
+        _kelembaban = kelembaban;
+        _statusPenyiraman = mapData['status_penyiraman'] ?? 'OFF';
+        _timestamp = mapData['timestamp'] ?? 'N/A';
+        _moistureThreshold = thresholdPct;
+        _mode = mapData['mode'] ?? 'otomatis';
+        _statusButton = mapData['status_button'] ?? 'OFF';
+
+        // Update history
+        final nextX = _history.isEmpty ? 0.0 : (_history.last.x + 1);
+        _history.add(FlSpot(nextX, _kelembaban.toDouble()));
+        while (_history.length > _maxHistory) {
+          _history.removeFirst();
+        }
+      });
     });
   }
 
   // 🔧 Konversi kelembaban (raw sensor → persen)
   int _convertKelembabanToPercentage(int rawValue) {
-    int maxValue = 4095; // ADC ESP32 max
-    int percentage = 100 - ((rawValue * 100) ~/ maxValue);
+    const int maxValue = 4095; // ADC ESP32 max
+    final percentage = 100 - ((rawValue * 100) ~/ maxValue);
     return percentage.clamp(0, 100);
   }
 
   // 🔧 Konversi persen → raw sensor (buat threshold)
   int _convertPercentageToRaw(double percentage) {
-    int maxValue = 4095;
+    const int maxValue = 4095;
     return ((100 - percentage) * maxValue ~/ 100).toInt();
   }
 
-  void _updateThreshold(double value) {
-    int rawValue = _convertPercentageToRaw(value);
-    _penyiramRef.update({"threshold": rawValue});
+  Future<void> _updateThreshold(double value) async {
+    final rawValue = _convertPercentageToRaw(value);
+    await _penyiramRef.update({'threshold': rawValue});
   }
 
-  void _updateMode(String mode) {
-    _penyiramRef.update({"mode": mode});
+  Future<void> _updateMode(String mode) async {
+    await _penyiramRef.update({'mode': mode});
   }
 
-  void _updateStatusButton(String status) {
-    _penyiramRef.update({"status_button": status});
+  Future<void> _updateStatusButton(String status) async {
+    await _penyiramRef.update({'status_button': status});
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDry = _kelembaban < _moistureThreshold;
+    final isPumping = _statusPenyiraman == 'ON';
+    final trend = _computeTrend();
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Penyiram Tanaman Otomatis")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // 📊 Kelembaban
-            Text("Kelembaban: $_kelembaban%",
-                style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 10),
-
-            // ✅ Status penyiraman
-            Text("Status Pompa: $_statusPenyiraman",
-                style: TextStyle(
-                    fontSize: 18,
-                    color: _statusPenyiraman == "ON"
-                        ? Colors.green
-                        : Colors.red)),
-
-            // 🕒 Timestamp
-            Text("Update terakhir: $_timestamp"),
-
-            const Divider(height: 30),
-
-            // 🎚️ Threshold kelembaban
-            Text("Threshold: ${_moistureThreshold.toInt()}%"),
-            Slider(
-              value: _moistureThreshold,
-              min: 0,
-              max: 100,
-              divisions: 100,
-              label: "${_moistureThreshold.toInt()}%",
-              onChanged: (value) {
-                setState(() => _moistureThreshold = value);
-              },
-              onChangeEnd: (value) {
-                _updateThreshold(value);
-              },
-            ),
-
-            const Divider(height: 30),
-
-            // ⚙️ Mode kontrol
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      appBar: AppBar(
+        title: const Text('Penyiram Tanaman Otomatis'),
+        actions: [
+          IconButton(
+            tooltip: 'Segarkan dari Cloud',
+            onPressed: () => _penyiramRef.keepSynced(true),
+            icon: const Icon(Icons.cloud_sync_outlined),
+          ),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (context, c) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text("Mode Kontrol:"),
-                DropdownButton<String>(
-                  value: _mode,
-                  items: const [
-                    DropdownMenuItem(
-                        value: "otomatis", child: Text("Otomatis")),
-                    DropdownMenuItem(value: "manual", child: Text("Manual")),
+                // ========= HERO STATS =========
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MetricCard(
+                        title: 'Kelembaban',
+                        subtitle: 'Terukur saat ini',
+                        value: '${_kelembaban}%',
+                        progress: _kelembaban / 100,
+                        accent: isDry ? cs.error : cs.primary,
+                        trailing: _TrendChip(trend: trend),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _MetricCard(
+                        title: 'Threshold',
+                        subtitle: 'Batas penyiraman',
+                        value: '${_moistureThreshold.toInt()}%',
+                        progress: _moistureThreshold / 100,
+                        accent: cs.tertiary,
+                        trailing: _StatusChip(
+                          label: _mode == 'otomatis' ? 'Otomatis' : 'Manual',
+                          icon:
+                              _mode == 'otomatis'
+                                  ? Icons.autorenew
+                                  : Icons.touch_app,
+                          color:
+                              _mode == 'otomatis' ? cs.primary : cs.secondary,
+                        ),
+                      ),
+                    ),
                   ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _mode = value);
-                      _updateMode(value);
-                    }
+                ),
+                const SizedBox(height: 12),
+
+                // ========= STATUS BAR =========
+                _StatusBar(
+                  timestamp: _timestamp,
+                  pumpOn: isPumping,
+                  mode: _mode,
+                  statusButton: _statusButton,
+                ),
+                const SizedBox(height: 12),
+
+                // ========= CHART =========
+                _ChartCard(
+                  history: _history.toList(growable: false),
+                  threshold: _moistureThreshold,
+                ),
+                const SizedBox(height: 20),
+
+                // ========= CONTROLS =========
+                _ControlsCard(
+                  mode: _mode,
+                  onModeChanged: (m) async {
+                    setState(() => _mode = m);
+                    await _updateMode(m);
+                  },
+                  threshold: _moistureThreshold,
+                  onThresholdChanged:
+                      (v) => setState(() => _moistureThreshold = v),
+                  onThresholdChangeEnd: (v) => _updateThreshold(v),
+                  statusButton: _statusButton,
+                  onManualSwitch: (on) {
+                    final newStatus = on ? 'ON' : 'OFF';
+                    setState(() => _statusButton = newStatus);
+                    _updateStatusButton(newStatus);
                   },
                 ),
               ],
             ),
+          );
+        },
+      ),
+    );
+  }
 
-            const SizedBox(height: 20),
+  int _computeTrend() {
+    if (_prevValue == null) return 0; // 0: flat, -1: down, +1: up
+    final diff = _kelembaban - _prevValue!;
+    if (diff.abs() <= 0.5) return 0;
+    return diff > 0 ? 1 : -1;
+  }
+}
 
-            // 🖲️ Tombol manual (hanya muncul kalau mode = manual)
-            if (_mode == "manual")
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+// =================== WIDGETS ===================
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.progress,
+    required this.accent,
+    this.trailing,
+  });
+
+  final String title;
+  final String subtitle;
+  final String value;
+  final double progress;
+  final Color accent;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // progress ring
+            SizedBox(
+              width: 64,
+              height: 64,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  const Text("Pompa Manual:"),
-                  Switch(
-                    value: _statusButton == "ON",
-                    onChanged: (val) {
-                      String newStatus = val ? "ON" : "OFF";
-                      setState(() => _statusButton = newStatus);
-                      _updateStatusButton(newStatus);
-                    },
+                  CircularProgressIndicator(
+                    value: progress.clamp(0, 1),
+                    strokeWidth: 8,
+                    color: accent,
+                    backgroundColor: cs.surfaceVariant,
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            if (trailing != null) trailing!,
           ],
         ),
       ),
+    );
+  }
+}
+
+class _StatusBar extends StatelessWidget {
+  const _StatusBar({
+    required this.timestamp,
+    required this.pumpOn,
+    required this.mode,
+    required this.statusButton,
+  });
+
+  final String timestamp;
+  final bool pumpOn;
+  final String mode;
+  final String statusButton;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            _StatusChip(
+              label: pumpOn ? 'Pompa: ON' : 'Pompa: OFF',
+              icon: pumpOn ? Icons.water : Icons.water_drop_outlined,
+              color: pumpOn ? cs.primary : cs.error,
+            ),
+            const SizedBox(width: 8),
+            _StatusChip(
+              label: mode == 'otomatis' ? 'Mode Otomatis' : 'Mode Manual',
+              icon: mode == 'otomatis' ? Icons.autorenew : Icons.touch_app,
+              color: mode == 'otomatis' ? cs.primary : cs.secondary,
+            ),
+            const Spacer(),
+            Icon(Icons.schedule, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              'Update: $timestamp',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: color.withOpacity(0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: cs.onSurface),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrendChip extends StatelessWidget {
+  const _TrendChip({required this.trend});
+  final int trend; // -1, 0, +1
+
+  @override
+  Widget build(BuildContext context) {
+    final map = {
+      -1: ('Turun', Icons.south_east, Colors.blueGrey),
+      0: ('Stabil', Icons.remove_rounded, Colors.grey),
+      1: ('Naik', Icons.north_east, Colors.green),
+    };
+    final (label, icon, color) = map[trend]!;
+    return _StatusChip(label: 'Trend $label', icon: icon, color: color);
+  }
+}
+
+class _ChartCard extends StatelessWidget {
+  const _ChartCard({required this.history, required this.threshold});
+  final List<FlSpot> history;
+  final double threshold;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Grafik Kelembaban Tanah',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Live',
+                    style: TextStyle(color: cs.onPrimaryContainer),
+                  ),
+                ),
+                const Spacer(),
+                _LegendDot(color: cs.primary, label: 'Kelembaban'),
+                const SizedBox(width: 12),
+                _LegendDot(color: cs.error, label: 'Threshold'),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 220,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: 100,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine:
+                        (v) =>
+                            FlLine(strokeWidth: 0.6, color: cs.outlineVariant),
+                  ),
+                  titlesData: FlTitlesData(
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 34,
+                        interval: 20,
+                        getTitlesWidget:
+                            (value, meta) => Text('${value.toInt()}%'),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: (history.length / 6).clamp(1, 10).toDouble(),
+                        getTitlesWidget:
+                            (value, meta) => Text(
+                              meta.formattedValue,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    horizontalLines: [
+                      HorizontalLine(
+                        y: threshold,
+                        color: cs.error,
+                        strokeWidth: 1.5,
+                        dashArray: [6, 6],
+                        label: HorizontalLineLabel(
+                          show: true,
+                          alignment: Alignment.topRight,
+                          style: TextStyle(
+                            color: cs.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          labelResolver:
+                              (_) => 'Threshold ${threshold.toInt()}%',
+                        ),
+                      ),
+                    ],
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: history.isEmpty ? [const FlSpot(0, 0)] : history,
+                      isCurved: true,
+                      barWidth: 3,
+                      color: cs.primary,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (s, p, b, i) {
+                          final isLast =
+                              history.isNotEmpty && s == history.last;
+                          return FlDotCirclePainter(
+                            radius: isLast ? 3.6 : 0,
+                            strokeWidth: 1.2,
+                            color: cs.primary,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            cs.primary.withOpacity(0.25),
+                            Colors.transparent,
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+}
+
+class _ControlsCard extends StatelessWidget {
+  const _ControlsCard({
+    required this.mode,
+    required this.onModeChanged,
+    required this.threshold,
+    required this.onThresholdChanged,
+    required this.onThresholdChangeEnd,
+    required this.statusButton,
+    required this.onManualSwitch,
+  });
+
+  final String mode;
+  final ValueChanged<String> onModeChanged;
+  final double threshold;
+  final ValueChanged<double> onThresholdChanged;
+  final ValueChanged<double> onThresholdChangeEnd;
+  final String statusButton;
+  final ValueChanged<bool> onManualSwitch;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Kontrol', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+
+            // Mode segmented
+            Row(
+              children: [
+                _Segmented(
+                  value: mode,
+                  onChanged: onModeChanged,
+                  items: const [
+                    ('otomatis', Icons.autorenew, 'Otomatis'),
+                    ('manual', Icons.touch_app, 'Manual'),
+                  ],
+                ),
+                const Spacer(),
+                if (mode == 'manual') ...[
+                  const SizedBox(width: 8),
+                  Text('Pompa'),
+                  Switch(
+                    value: statusButton == 'ON',
+                    onChanged: (v) => onManualSwitch(v),
+                  ),
+                ],
+              ],
+            ),
+
+            const SizedBox(height: 16),
+            Text(
+              'Threshold (${threshold.toInt()}%)',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            Slider(
+              value: threshold,
+              min: 0,
+              max: 100,
+              divisions: 100,
+              label: '${threshold.toInt()}%',
+              onChanged: onThresholdChanged,
+              onChangeEnd: onThresholdChangeEnd,
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: const [
+                Text('0%'),
+                Text('25%'),
+                Text('50%'),
+                Text('75%'),
+                Text('100%'),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceVariant.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: cs.primary),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Jika kelembaban turun di bawah threshold dan mode Otomatis aktif, pompa akan menyala.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Segmented extends StatelessWidget {
+  const _Segmented({
+    required this.value,
+    required this.onChanged,
+    required this.items,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final List<(String, IconData, String)> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 8,
+      children:
+          items.map((it) {
+            final (val, icon, label) = it;
+            final selected = value == val;
+            return InkWell(
+              borderRadius: BorderRadius.circular(100),
+              onTap: () => onChanged(val),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: selected ? cs.primary.withOpacity(0.12) : cs.surface,
+                  border: Border.all(
+                    color: selected ? cs.primary : cs.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 16,
+                      color: selected ? cs.primary : cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: selected ? cs.primary : cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
     );
   }
 }
